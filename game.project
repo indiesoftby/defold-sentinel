@@ -1,0 +1,28 @@
+[bootstrap]
+main_collection = /main/main.collectionc
+
+[display]
+width = 960
+height = 640
+
+[script]
+shared_state = 1
+
+[project]
+title = sentinel_example
+version = 1.0.0
+
+[library]
+include_dirs = sentinel
+
+[html5]
+scale_mode = fit
+cssfile = /builtins/manifests/web/dark_theme.css
+
+[sentinel]
+sentry_dsn_html5 = https://a09cb15ea1224b7db88ff3681c0d574f@o43904.ingest.sentry.io/5395416
+sentry_release = sentinel@1.0.0
+
+[input]
+game_binding = /builtins/input/all.input_bindingc
+

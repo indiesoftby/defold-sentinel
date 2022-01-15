@@ -1,0 +1,52 @@
+local sentry = require("sentinel.sentry")
+
+local function init_sentry()
+    sentry.init({
+        dsn = sys.get_config("sentinel.sentry_dsn_html5"),
+        debug = true,
+        dry_run = false,
+        tags = {
+            ["example_tag"] = "Example Tag Data",
+        },
+        extra = {
+            ["example_extra"] = "Example Extra Data",
+        },
+        release = sys.get_config("sentinel.sentry_release")
+    })
+end
+
+local function send_sentry_msg()
+    sentry.add_breadcrumb({category = "log", message = "Test breadcrumb message"})
+    sentry.capture_message({message = "Test message", level = "info", extra = {
+        example_extra_2 = "Hello!"
+    } })
+
+    sentry.add_breadcrumb({category = "log", message = "Test breadcrumb message #2"})
+    error("Test error")
+end
+
+function init(self)
+    msg.post("@render:", "use_fixed_fit_projection", { near = -1, far = 1 })
+    msg.post(".", "acquire_input_focus")
+
+    init_sentry()
+end
+
+function final(self)
+end
+
+function update(self, dt)
+end
+
+function on_message(self, message_id, message, sender)
+end
+
+function on_input(self, action_id, action)
+    if action_id == hash("touch") and action.released then
+        label.set_text("#hello", "Sent!")
+        send_sentry_msg()
+    end
+end
+
+function on_reload(self)
+end
