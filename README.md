@@ -1,3 +1,5 @@
+[![Sentinel Cover](cover.jpg)](https://github.com/indiesoftby/defold-sentinel)
+
 # Sentinel: Sentry.io SDK for Defold
 
 *This is an open-source project. It is not affiliated with Sentry.io.*
@@ -91,7 +93,9 @@ sentry.init({
 
 Artsiom Trubchyk ([@aglitchman](https://github.com/aglitchman)) is the current Sentinel owner within Indiesoft and is responsible for the open source repository.
 
-This project uses the source code of [rxi's JSON](https://github.com/rxi/json.lua).
+This project uses the source code of [rxi's JSON](https://github.com/rxi/json.lua). 
+
+Queen's Guard image is by [Chanut is Industries](https://thenounproject.com/chanut-is/).
 
 ### License
 
