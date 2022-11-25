@@ -39,8 +39,9 @@ end
 local function merge_kv(dest, src)
     if src then
         for k, v in pairs(src) do
-            if string.len(v) > 0 then
-                dest[k] = tostring(v)
+            local s = tostring(v)
+            if string.len(s) > 0 then
+                dest[k] = s
             end
         end
     end
