@@ -6,8 +6,6 @@
 -- SDK Development Documentation: https://develop.sentry.dev/sdk/overview/
 --
 
-local rxi_json = require("sentinel.json")
-
 local M = {}
 
 local LOG_PREFIX = "SENTINEL: "
@@ -30,7 +28,7 @@ end
 
 local function log_print(v)
     if html5 and not ENGINE_INFO.is_debug then
-        html5.run("console.log(" .. rxi_json.encode(LOG_PREFIX .. tostring(v)) .. ")")
+        html5.run("console.log(" .. json.encode(LOG_PREFIX .. tostring(v)) .. ")")
     else
         print(LOG_PREFIX .. tostring(v))
     end
@@ -116,7 +114,7 @@ end
 local function request_callback(next)
     return function(self, id, resp)
         if resp.status == 200 then
-            local ok, retval = pcall(rxi_json.decode, resp.response)
+            local ok, retval = pcall(json.decode, resp.response)
             if ok then
                 -- valid response
                 if next then
@@ -216,7 +214,7 @@ local function send(json_str, callback)
         if M.config.debug then
             log_print("Sending http request (dry run)")
         end
-        cb_handler(M.obj, "(dry run)", {response = rxi_json.encode({id = "(dry run)"}), status = 200})
+        cb_handler(M.obj, "(dry run)", {response = json.encode({id = "(dry run)"}), status = 200})
     else
         http.request(url, method, cb_handler, headers, post_data, options)
     end
@@ -305,8 +303,8 @@ function M.init(config)
 
         local error = {
             source = "crash",
-            message = rxi_json.encode(extra_data),
-            traceback = rxi_json.encode(backtrace),
+            message = json.encode(extra_data),
+            traceback = json.encode(backtrace),
             fatal = true
         }
         local pstatus, perr = pcall(M.capture_exception, error)
@@ -422,7 +420,7 @@ function M.capture_exception(err)
         event.extra = nil
     end
 
-    local json_str = rxi_json.encode(event)
+    local json_str = json.encode(event)
     if M.config.debug then
         log_print("JSON payload " .. json_str)
     end
@@ -472,7 +470,7 @@ function M.capture_message(msg)
         event.extra = nil
     end
 
-    local json_str = rxi_json.encode(event)
+    local json_str = json.encode(event)
     if M.config.debug then
         log_print("JSON payload " .. json_str)
     end
