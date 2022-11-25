@@ -31,7 +31,10 @@ local sentry = require("sentinel.sentry")
 
 function init(self)
     sentry.init({
+        -- The DSN tells the SDK where to send the events to.
+        -- Example of the DSN url: https://a09cb15ea1224b7db88ff3681c0d574f@o43904.ingest.sentry.io/5395416
         dsn = "YOUR_DSN_URL",
+        -- Tags and extra data are optional
         tags = {
             ["example_tag"] = "Example Tag Data",
         },
@@ -53,18 +56,23 @@ sentry.add_breadcrumb(
         message = "Test breadcrumb message"
     })
 
-sentry.config.tags["my_info"] = "Amount of gold"
-sentry.config.tags["frametime"] = 100
+sentry.set_tag("my_info", "Amount of gold")
+sentry.set_extra("frametime", 100)
+sentry.set_extra("cheater", true)
 
 sentry.capture_message(
     {
         message = "Test message",
         level = "info",
+        -- Sentinel's Sentry client merges globally defined tags/extra with this data,
+        -- i.e. you can add tags and extras for different kinds of messages and exceptions.
         extra = {
             example_extra_2 = "Hello!"
         }
     })
 ```
+
+![Example Sentry Issue](example_sentry_issue.png)
 
 ### The `game.project` Settings:
 
@@ -78,7 +86,7 @@ Setting the `sentinel.sentry_dsn_html5` option initializes Sentry JavaScript SDK
 
 ### GameAnalytics Compatibility
 
-Only one [`sys.set_error_handler`](https://defold.com/ref/sys/#sys.set_error_handler:error_handler) callback can be set. To track Lua errors both in GameAnalytics and Sentinel, use the option:
+Only one [`sys.set_error_handler`](https://defold.com/ref/sys/#sys.set_error_handler:error_handler) callback can be set. To track Lua errors both in GameAnalytics and Sentinel, use the option, i.e. Sentinel will send captured errors to both, Sentry and GameAnalytics:
 
 ```lua
 sentry.init({
@@ -88,6 +96,8 @@ sentry.init({
     gameanalytics = true
 })
 ```
+
+Plus, look into the `sentinel/sentry.lua` module to find all available configuration options!
 
 ## Credits
 

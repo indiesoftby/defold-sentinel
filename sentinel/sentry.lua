@@ -47,7 +47,9 @@ local function merge_kv(dest, src)
     end
 end
 
--- default rate limit: 10 messages per 300 seconds.
+--- This function helps to throttle the amount of messages your game
+-- is sending to not spam Sentry servers.
+-- Default rate limit: 10 messages per 300 seconds.
 local function add_transaction(transactions)
     table.insert(transactions, { time = socket.gettime() })
 
@@ -55,7 +57,7 @@ local function add_transaction(transactions)
         local time = transactions[1].time
 
         if time > socket.gettime() - 300 then
-            -- throttle
+            -- Throttle!
             table.remove(transactions) -- pop
             return false
         else
@@ -220,46 +222,77 @@ local function send(json_str, callback)
     end
 end
 
+local function error_handler(source, message, traceback)
+    local error = {source = source, message = message, traceback = traceback}
+    local pstatus, perr = pcall(M.capture_exception, error)
+    if not pstatus then
+        log_print("Exception capture error " .. perr)
+    end
+
+    if M.config.on_soft_crash then
+        pstatus, perr = pcall(M.config.on_soft_crash, error)
+        log_print("Soft crash callback error " .. perr)
+    end
+end
+
 ---
 --- PUBLIC API
 ---
 
--- config:
--- - dsn
--- - debug true/false
--- - dry_run true/false
+--- Initialize Sentinel's Sentry Client.
+-- Configuration should happen as early as possible in your application's lifecycle.
+-- @param config table = { 
+--          dsn = string, -- REQUIRED
+--          -- OPTIONAL:
+--          -- Turn on to debug and check what data Sentinel sends:
+--          debug = boolean,
+--          dry_run = boolean,
+--          -- Options
+--          gameanalytics = boolean, -- Default: false
+--          send_timeout = number, -- Default: 30 (seconds)
+--          set_error_handler = boolean, -- Default: true
+--          load_previous_crash = boolean, -- Default: true
+--          -- Extra/tags data
+--          extra = {},
+--          tags = {},
+--          -- Callbacks
+--          on_soft_crash = function,
+--          on_hard_crash = function,
+--          -- Sentry-specific things that Sentinel sends with every captured message/error:
+--          release = string, -- Project's Release ID
+--          dist = string, -- The distribution. Distributions are used to disambiguate build or deployment variants.
+--          environment = string, -- The environment. This string is freeform. Think `staging` vs `prod` or similar.
+--          user = table,
+--      }
 function M.init(config)
+    assert(type(config) == "table", "`config` should be a table.")
     M.config = config
-    assert(M.config.dsn)
 
-    if M.config.send_timeout == nil then
-        M.config.send_timeout = 30 -- seconds
-    end
+    assert(M.config.dsn, "`dsn` is required.")
 
+    -- Default settings
+    M.config.send_timeout = M.config.send_timeout or 30 -- seconds
+    M.config.set_error_handler = M.config.set_error_handler or true
+    M.config.load_previous_crash = M.config.load_previous_crash or true
+
+    --
     M.obj, err = parse_dsn(M.config.dsn)
-    assert(err == nil)
+    assert(err == nil, "Invalid the DSN url.")
 
     M.transactions = {}
 
     M.config.extra = M.config.extra or {}
     M.config.tags = M.config.tags or {}
 
-    sys.set_error_handler(function(source, message, traceback)
-        local error = {source = source, message = message, traceback = traceback}
-        local pstatus, perr = pcall(M.capture_exception, error)
-        if not pstatus then
-            log_print("Exception capture error " .. perr)
-        end
-
-        if M.config.on_soft_crash then
-            pstatus, perr = pcall(M.config.on_soft_crash, error)
-            log_print("Soft crash callback error " .. perr)
-        end
-    end)
+    if M.config.set_error_handler then
+        sys.set_error_handler(error_handler)
+    end
 
     if M.config.debug then
         log_print(USER_AGENT .. ", init OK")
     end
+
+    if not M.config.load_previous_crash then return end
 
     local handle = crash.load_previous()
     if handle then
@@ -290,15 +323,18 @@ function M.init(config)
     end
 end
 
--- https://docs.sentry.io/enriching-error-data/breadcrumbs/
--- https://docs.sentry.io/development/sdk-dev/event-payloads/breadcrumbs/
--- example: sentry.add_breadcrumb({ category = "log", message = "Test breadcrumb message" })
+--- Manually add a breadcrumb whenever something interesting happens.
+-- Sentry uses breadcrumbs to create a trail of events that happened prior to an issue.
+-- These events are very similar to traditional logs, but can record more rich structured data.
+-- - https://docs.sentry.io/platforms/javascript/guides/vue/enriching-events/breadcrumbs/
+-- - https://docs.sentry.io/development/sdk-dev/event-payloads/breadcrumbs/
+-- Example: sentry.add_breadcrumb({ category = "log", message = "Test breadcrumb message" })
+-- @param breadcrumb table = { category, message }
 function M.add_breadcrumb(breadcrumb)
     if type(M.config) ~= "table" then
         return
     end
-    -- assert(type(M.config) == "table", "initialize first")
-    
+
     if M.breadcrumbs == nil then
         M.breadcrumbs = {}
     end
@@ -314,33 +350,39 @@ function M.add_breadcrumb(breadcrumb)
     end
 end
 
+--- Set a globally defined tag.
+-- @param key string
+-- @param value string|number|boolean
 function M.set_tag(key, value)
     if type(M.config) ~= "table" then
         return
     end
-    -- assert(type(M.config) == "table", "initialize first")
 
     M.config.tags[key] = value
 end
 
+--- Set globally defined extra data.
+-- @param key string
+-- @param value string|number|boolean
 function M.set_extra(key, value)
     if type(M.config) ~= "table" then
         return
     end
-    -- assert(type(M.config) == "table", "initialize first")
 
-    M.config.tags[key] = value
+    M.config.extra[key] = value
 end
 
+--- Capture an error, i.e. send data to Sentry about the error.
+-- @param err table = { message, traceback, source, fatal, tags, extra, callback }
 function M.capture_exception(err)
     assert(type(M.config) == "table", "initialize first")
-    assert(type(err) == "table", "capture_exception expects a table")
+    assert(type(err) == "table", "`capture_exception` expects a table.")
 
     if not add_transaction(M.transactions) then
         if msg.callback then
-            msg.callback(nil, "Too much messages per minute")
+            msg.callback(nil, "Too much messages per minute.")
         else
-            log_print("Dropping the message, too much messages per minute")
+            log_print("Dropping the message, too much messages per minute.")
         end
         return
     end
@@ -395,19 +437,18 @@ function M.capture_exception(err)
     end)
 end
 
--- Typically, the Sentry SDK does not emit messages. This is most useful when you’ve overridden
--- fingerprinting but need to give a useful message.
--- Level can be fatal, error, warning, info, and debug
--- msg: message, level, tags, extra, callback
+--- Capture a bare message. A message is textual information that should be sent to Sentry.
+-- Level can be "fatal", "error", "warning", "info", and "debug"
+-- @param msg table = { message, level, tags, extra, callback }
 function M.capture_message(msg)
     assert(type(M.config) == "table", "initialize first")
-    assert(type(msg) == "table", "capture_message expects a table")
+    assert(type(msg) == "table", "`capture_message` expects a table.")
 
     if not add_transaction(M.transactions) then
         if msg.callback then
-            msg.callback(nil, "Too much messages per minute")
+            msg.callback(nil, "Too much messages per minute.")
         else
-            log_print("Dropping the message, too much messages per minute")
+            log_print("Dropping the message, too much messages per minute.")
         end
         return
     end
