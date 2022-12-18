@@ -10,7 +10,7 @@ local M = {}
 
 local LOG_PREFIX = "SENTINEL: "
 local LOGGER_NAME = "sentinel"
-local VERSION = "1.0.0"
+local VERSION = "1.1.1"
 local USER_AGENT = "sentinel-sentry/" .. VERSION
 
 local APP_PATH = sys.get_application_path()
@@ -266,12 +266,18 @@ function M.init(config)
     assert(type(config) == "table", "`config` should be a table.")
     M.config = config
 
-    assert(M.config.dsn, "`dsn` is required.")
+    assert(type(M.config.dsn) == "string", "`config.dsn` is required and should be a string.")
 
     -- Default settings
-    M.config.send_timeout = M.config.send_timeout or 30 -- seconds
-    M.config.set_error_handler = M.config.set_error_handler or true
-    M.config.load_previous_crash = M.config.load_previous_crash or true
+    if type(M.config.send_timeout) ~= "number" then
+        M.config.send_timeout = 30 -- seconds
+    end
+    if type(M.config.set_error_handler) ~= "boolean" then
+        M.config.set_error_handler = true
+    end
+    if type(M.config.load_previous_crash) ~= "boolean" then
+        M.config.load_previous_crash = true
+    end
 
     --
     M.obj, err = parse_dsn(M.config.dsn)
