@@ -383,8 +383,8 @@ function M.capture_exception(err)
     assert(type(err) == "table", "`capture_exception` expects a table.")
 
     if not add_transaction(M.transactions) then
-        if msg.callback then
-            msg.callback(nil, "Too much messages per minute.")
+        if err.callback then
+            err.callback(nil, "Too much messages per minute.")
         else
             log_print("Dropping the message, too much messages per minute.")
         end
@@ -430,13 +430,13 @@ function M.capture_exception(err)
     if M.config.debug then
         log_print("JSON payload " .. json_str)
     end
-    send(json_str, function(id, err)
+    send(json_str, function(id, err_str)
         if id and M.config.debug then
             log_print("Exception is recorded as " .. id)
         end
 
-        if msg.callback then
-            msg.callback(id, err)
+        if err.callback then
+            err.callback(id, err_str)
         end
     end)
 end
@@ -480,13 +480,13 @@ function M.capture_message(msg)
     if M.config.debug then
         log_print("JSON payload " .. json_str)
     end
-    send(json_str, function(id, err)
+    send(json_str, function(id, err_str)
         if id and M.config.debug then
             log_print("Message is recorded as " .. id)
         end
 
         if msg.callback then
-            msg.callback(id, err)
+            msg.callback(id, err_str)
         end
     end)
 end
