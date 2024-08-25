@@ -10,7 +10,7 @@ local M = {}
 
 local LOG_PREFIX = "SENTINEL: "
 local LOGGER_NAME = "sentinel"
-local VERSION = "1.2.0"
+local VERSION = "1.3.0"
 local USER_AGENT = "sentinel-sentry/" .. VERSION
 
 local APP_PATH = sys.get_application_path()
