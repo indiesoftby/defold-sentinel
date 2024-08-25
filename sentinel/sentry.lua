@@ -10,14 +10,16 @@ local M = {}
 
 local LOG_PREFIX = "SENTINEL: "
 local LOGGER_NAME = "sentinel"
-local VERSION = "1.1.1"
+local VERSION = "1.2.0"
 local USER_AGENT = "sentinel-sentry/" .. VERSION
 
 local APP_PATH = sys.get_application_path()
 local ENGINE_INFO = sys.get_engine_info()
 local SYS_INFO = sys.get_sys_info()
 
--- Returns a string suitable to be used as `event_id`.
+--- Generates a unique event ID suitable for use in Sentry.
+-- This function creates a 32-character hexadecimal string based on the current time and random numbers.
+-- @treturn string A 32-character hexadecimal string representing the event ID.
 local function generate_event_id()
     local h = hash_to_hex(hash(tostring(socket.gettime()) .. string.format("%07x", math.random(0, 0xfffffff))))
     while string.len(h) < 32 do
@@ -26,6 +28,8 @@ local function generate_event_id()
     return string.sub(h, 1, 32)
 end
 
+--- Logs a message via `print`. If running in HTML5 and not in debug mode, it uses `console.log`.
+-- @tparam any v The value to be logged.
 local function log_print(v)
     if html5 and not ENGINE_INFO.is_debug then
         html5.run("console.log(" .. json.encode(LOG_PREFIX .. tostring(v)) .. ")")
@@ -34,6 +38,9 @@ local function log_print(v)
     end
 end
 
+--- Merges key-value pairs from `src` table into `dest`. Copies non-empty string values from src to dest.
+-- @tparam table dest The destination table to merge into.
+-- @tparam table src The source table to merge from if not nil.
 local function merge_kv(dest, src)
     if src then
         for k, v in pairs(src) do
@@ -45,9 +52,10 @@ local function merge_kv(dest, src)
     end
 end
 
---- This function helps to throttle the amount of messages your game
--- is sending to not spam Sentry servers.
+--- This function helps to throttle the amount of messages your game is sending to not spam Sentry servers.
 -- Default rate limit: 10 messages per 300 seconds.
+-- @tparam table transactions A table containing transaction entries
+-- @treturn boolean Returns true if the transaction was added, false if throttled
 local function add_transaction(transactions)
     table.insert(transactions, { time = socket.gettime() })
 
@@ -66,6 +74,12 @@ local function add_transaction(transactions)
     return true
 end
 
+--- Parses a host and port from a given host string.
+-- @tparam string protocol The protocol being used (e.g., 'http' or 'https')
+-- @tparam string host The host string, which may include a port number
+-- @treturn string|nil The parsed host name, or nil if parsing fails
+-- @treturn number|nil The parsed port number, or nil if parsing fails
+-- @treturn string|nil An error message if parsing fails, or nil on success
 local function parse_host_port(protocol, host)
     local i = string.find(host, ":")
     if not i then
@@ -81,7 +95,11 @@ local function parse_host_port(protocol, host)
     return string.sub(host, 1, i - 1), port
 end
 
---- Parsed DSN table containing its different fields.
+--- Parses DSN string
+-- @tparam string dsn The DSN string to parse
+-- @tparam[opt] table obj The table to store the parsed DSN fields
+-- @treturn table|nil The parsed DSN table, or nil if parsing fails
+-- @treturn string|nil An error message if parsing fails, or nil on success 
 local function parse_dsn(dsn, obj)
     if not obj then
         obj = {}
@@ -111,6 +129,10 @@ local function parse_dsn(dsn, obj)
     return nil, "failed to parse DSN string"
 end
 
+--- Generates a callback function for handling Sentry API responses
+-- @tparam function|nil next The optional callback function to be called after processing the response
+-- @treturn function The generated callback function
+-- @usage local callback = request_callback(function(id, err) print(id, err) end)
 local function request_callback(next)
     return function(self, id, resp)
         if resp.status == 200 then
@@ -128,7 +150,7 @@ local function request_callback(next)
             end
         else
             if M.config.debug then
-                log_print("Invalid request")
+                log_print("Invalid request, response status " .. resp.status)
             end
             if next then
                 next(nil, "Response status " .. resp.status)
@@ -137,7 +159,9 @@ local function request_callback(next)
     end
 end
 
--- https://docs.sentry.io/development/sdk-dev/event-payloads/
+--- Creates a new event structure for Sentry reporting.
+-- https://develop.sentry.dev/sdk/event-payloads/
+-- @treturn table A new event table with initialized fields
 local function new_event()
     local event = {}
     event.event_id = generate_event_id()
@@ -175,11 +199,6 @@ local function new_event()
     event.tags["project.version"] = sys.get_config("project.version")
 
     if html5 then
-        local webgl_renderer = html5.run("Module['__debugInfoWebGLRenderer']")
-        if webgl_renderer and webgl_renderer ~= "undefined" then
-            event.tags["gl_info.renderer"] = webgl_renderer
-        end
-
         event.request = {
             url = html5.run("window.location.href"),
             headers = {
@@ -197,6 +216,9 @@ local function new_event()
     return event
 end
 
+--- Sends the JSON-encoded event data to the Sentry server.
+-- @tparam string json_str The JSON-encoded event data to send.
+-- @tparam[opt] function callback A callback function to be called after the request is completed.
 local function send(json_str, callback)
     local url = M.obj.server .. "?sentry_version=7&sentry_key=" .. M.obj.public_key
     local method = "POST"
@@ -239,29 +261,22 @@ end
 
 --- Initialize Sentinel's Sentry Client.
 -- Configuration should happen as early as possible in your application's lifecycle.
--- @param config table = { 
---          dsn = string, -- REQUIRED
---          -- OPTIONAL:
---          -- Turn on to debug and check what data Sentinel sends:
---          debug = boolean,
---          dry_run = boolean,
---          -- Options
---          gameanalytics = boolean, -- Default: false
---          send_timeout = number, -- Default: 30 (seconds)
---          set_error_handler = boolean, -- Default: true
---          load_previous_crash = boolean, -- Default: true
---          -- Extra/tags data
---          extra = {},
---          tags = {},
---          -- Callbacks
---          on_soft_crash = function,
---          on_hard_crash = function,
---          -- Sentry-specific things that Sentinel sends with every captured message/error:
---          release = string, -- Project's Release ID
---          dist = string, -- The distribution. Distributions are used to disambiguate build or deployment variants.
---          environment = string, -- The environment. This string is freeform. Think `staging` vs `prod` or similar.
---          user = table,
---      }
+-- @tparam table config Configuration table
+-- @tparam string config.dsn The DSN tells the SDK where to send the events
+-- @tparam[opt=false] boolean config.debug Turn on to debug and check what data Sentinel sends
+-- @tparam[opt=false] boolean config.dry_run If true, don't actually send data to Sentry
+-- @tparam[opt=false] boolean config.gameanalytics Whether to duplicate errors to GameAnalytics if it's installed
+-- @tparam[opt=30] number config.send_timeout HTTP request timeout
+-- @tparam[opt=true] boolean config.set_error_handler Install a custom Lua error handler
+-- @tparam[opt=true] boolean config.load_previous_crash Load the previous crash dump if it exists
+-- @tparam[opt] table config.extra Extra data to send with every event
+-- @tparam[opt] table config.tags Tags to send with every event
+-- @tparam[opt] function config.on_soft_crash Callback function for soft crashes
+-- @tparam[opt] function config.on_hard_crash Callback function for hard crashes
+-- @tparam[opt] string config.release Project's Release ID
+-- @tparam[opt] string config.dist The distribution. Used to disambiguate build or deployment variants
+-- @tparam[opt] string config.environment The environment. This string is freeform. E.g., 'staging' vs 'prod'
+-- @tparam[opt] table config.user User information to include with events
 function M.init(config)
     assert(type(config) == "table", "`config` should be a table.")
     M.config = config
@@ -280,6 +295,7 @@ function M.init(config)
     end
 
     --
+    local err
     M.obj, err = parse_dsn(M.config.dsn)
     assert(err == nil, "Invalid the DSN url.")
 
@@ -327,13 +343,15 @@ function M.init(config)
     end
 end
 
---- Manually add a breadcrumb whenever something interesting happens.
+--- Manually adds a breadcrumb whenever something interesting happens.
 -- Sentry uses breadcrumbs to create a trail of events that happened prior to an issue.
 -- These events are very similar to traditional logs, but can record more rich structured data.
 -- - https://docs.sentry.io/platforms/javascript/guides/vue/enriching-events/breadcrumbs/
 -- - https://docs.sentry.io/development/sdk-dev/event-payloads/breadcrumbs/
--- Example: sentry.add_breadcrumb({ category = "log", message = "Test breadcrumb message" })
--- @param breadcrumb table = { category, message }
+-- @tparam table breadcrumb A table containing breadcrumb information
+-- @tparam string breadcrumb.category The category of the breadcrumb
+-- @tparam string breadcrumb.message The message content of the breadcrumb
+-- @usage sentry.add_breadcrumb({ category = "log", message = "Test breadcrumb message" })
 function M.add_breadcrumb(breadcrumb)
     if type(M.config) ~= "table" then
         return
@@ -355,8 +373,11 @@ function M.add_breadcrumb(breadcrumb)
 end
 
 --- Set a globally defined tag.
--- @param key string
--- @param value string|number|boolean
+-- This function allows you to set a tag that will be included in all future error reports or messages.
+-- @tparam string key The key for the tag.
+-- @tparam string|number|boolean value The value.
+-- @usage sentry.set_tag("environment", "production")
+-- @usage sentry.set_tag("user_id", 12345)
 function M.set_tag(key, value)
     if type(M.config) ~= "table" then
         return
@@ -365,9 +386,12 @@ function M.set_tag(key, value)
     M.config.tags[key] = value
 end
 
---- Set globally defined extra data.
--- @param key string
--- @param value string|number|boolean
+--- Sets globally defined extra data.
+-- This function allows you to set extra data that will be included in all future error reports or messages.
+-- @tparam string key The key for the extra data.
+-- @tparam string|number|boolean value The value.
+-- @usage sentry.set_extra("user_level", 42)
+-- @usage sentry.set_extra("last_checkpoint", "boss_room")
 function M.set_extra(key, value)
     if type(M.config) ~= "table" then
         return
@@ -377,7 +401,32 @@ function M.set_extra(key, value)
 end
 
 --- Capture an error, i.e. send data to Sentry about the error.
--- @param err table = { message, traceback, source, fatal, tags, extra, callback }
+-- If you set a global error handler, then you don't need to call this function.
+-- @tparam table err Error information
+-- @tparam string err.message Error message
+-- @tparam[opt] string err.traceback Error traceback
+-- @tparam[opt] string err.source Error source
+-- @tparam[opt] boolean err.fatal Whether the error is fatal
+-- @tparam[opt] table err.tags Additional tags to include
+-- @tparam[opt] table err.extra Additional extra data to include  
+-- @tparam[opt] function err.callback A function to be called after the message is sent, with parameters (id, err_str)
+-- @usage
+-- local err = {
+--     message = "Division by zero",
+--     traceback = debug.traceback(),
+--     source = "math_operations.lua",
+--     fatal = false,
+--     tags = {level = "boss"},
+--     extra = {input_value = 0},
+--     callback = function(id, err_str) 
+--         if id then
+--             print("Captured with ID: " .. tostring(id))
+--         else
+--             print("Failed to capture error: " .. err_str)
+--         end
+--     end
+-- }
+-- sentry.capture_exception(err)
 function M.capture_exception(err)
     assert(type(M.config) == "table", "initialize first")
     assert(type(err) == "table", "`capture_exception` expects a table.")
@@ -441,9 +490,21 @@ function M.capture_exception(err)
     end)
 end
 
---- Capture a bare message. A message is textual information that should be sent to Sentry.
--- Level can be "fatal", "error", "warning", "info", and "debug"
--- @param msg table = { message, level, tags, extra, callback }
+--- Captures a bare message to be sent to Sentry.
+-- @tparam table msg A table containing message details
+-- @tparam string msg.message The textual content of the message
+-- @tparam[opt="info"] string msg.level The severity level of the message. Can be "fatal", "error", "warning", "info", or "debug"
+-- @tparam[opt] table msg.tags Additional tags to include
+-- @tparam[opt] table msg.extra Additional extra data to include
+-- @tparam[opt] function msg.callback A function to be called after the message is sent, with parameters (id, err_str)
+-- @usage
+-- sentry.capture_message({
+--     message = "User performed action X",
+--     level = "info",
+--     tags = {group = "newbie"},
+--     extra = {user_id = "12345", inventory = "sword, shield, potion"},
+--     callback = function(id, err) print(id, err) end
+-- })
 function M.capture_message(msg)
     assert(type(M.config) == "table", "initialize first")
     assert(type(msg) == "table", "`capture_message` expects a table.")
