@@ -15,7 +15,7 @@ local USER_AGENT = "sentinel-sentry/" .. VERSION
 
 local APP_PATH = sys.get_application_path()
 local ENGINE_INFO = sys.get_engine_info()
-local SYS_INFO = sys.get_sys_info()
+local SYS_INFO = sys.get_sys_info({ignore_secure = true})
 
 --- Generates a unique event ID suitable for use in Sentry.
 -- This function creates a 32-character hexadecimal string based on the current time and random numbers.
