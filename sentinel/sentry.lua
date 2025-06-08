@@ -192,7 +192,9 @@ local function new_event()
     for k, v in pairs(SYS_INFO) do
         local s = tostring(v)
         if string.len(s) > 0 then
-            event.tags["sys_info." .. k] = s
+            if k ~= "system_version" then
+                event.tags["sys_info." .. k] = s
+            end
         end
     end
 
