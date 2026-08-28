@@ -198,7 +198,7 @@ local function new_event()
         end
     end
 
-    event.tags["project.version"] = sys.get_config("project.version")
+    event.tags["project.version"] = sys.get_config_string("project.version")
 
     if html5 then
         event.request = {
@@ -248,12 +248,12 @@ local function error_handler(source, message, traceback)
     local error = {source = source, message = message, traceback = traceback}
     local pstatus, perr = pcall(M.capture_exception, error)
     if not pstatus then
-        log_print("Exception capture error " .. perr)
+        log_print("Exception capture error " .. tostring(perr))
     end
 
     if M.config.on_soft_crash then
         pstatus, perr = pcall(M.config.on_soft_crash, error)
-        log_print("Soft crash callback error " .. perr)
+        log_print("Soft crash callback error " .. tostring(perr))
     end
 end
 
@@ -333,12 +333,12 @@ function M.init(config)
         }
         local pstatus, perr = pcall(M.capture_exception, error)
         if not pstatus then
-            log_print("Crash capture error " .. perr)
+            log_print("Crash capture error " .. tostring(perr))
         end
 
         if M.config.on_hard_crash then
             pstatus, perr = pcall(M.config.on_hard_crash, error)
-            log_print("Hard crash callback error " .. perr)
+            log_print("Hard crash callback error " .. tostring(perr))
         end
 
         pcall(crash.release, handle)
